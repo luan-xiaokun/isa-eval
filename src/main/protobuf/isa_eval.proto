@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "xk.luan";
+option java_outer_classname = "IsaEvalProto";
+
+package isa_eval;
+
+service IsaEval {
+  rpc SetupIsabelle(Setup) returns (Setup) {};
+
+  rpc CloseIsabelle(Empty) returns (Empty) {};
+
+  rpc ProceedUntil(TheoryContent) returns (OutcomeState) {};
+
+  rpc Execute(ProofCommands) returns (OutcomeState) {};
+
+  rpc ExecuteMany(stream ProofCommands) returns (stream OutcomeState) {};
+
+  rpc CallSledgehammer(SledgehammerRequest) returns (OutcomeState) {};
+
+  rpc CloneState(StateRequest) returns (OutcomeState) {};
+
+  rpc RemoveState(StateRequest) returns (Empty) {};
+
+  rpc ClearAndRename(ClearAndRenameRequest) returns (OutcomeState) {};
+
+  rpc GetTheoryCommands(ParseRequest) returns (stream IsabelleCommand) {};
+}
+
+message Setup {
+  string isa_path = 1;
+  string session = 2;
+  string working_directory = 3;
+  string session_roots = 4;
+}
+
+message TheoryContent {
+  string theory = 1;
+  string content = 2;
+  int32 timeout = 3;
+}
+
+message ParseRequest {
+  string theory = 1;
+  bool only_statements = 2;
+  bool remove_ignored = 3;
+}
+
+message SledgehammerRequest {
+  string id = 1;
+  int32 timeout = 2;
+  int32 sledgehammer_timeout = 3;
+}
+
+message TryResponse {
+  OutcomeState outcome = 1;
+  string command = 2;
+}
+
+message OutcomeState {
+  string id = 1;
+  string result = 2;
+  string message = 3;
+  int32 level = 4;
+  string state = 5;
+}
+
+message ProofCommands {
+  string id = 1;
+  string commands = 2;
+  int32 timeout = 3;
+}
+
+message StateRequest {
+  string id = 1;
+}
+
+message ClearAndRenameRequest {
+  string id = 1;
+  string new_id = 2;
+}
+
+message IsabelleCommand {
+  string command = 1;
+  string name = 2;
+  int32 line = 3;
+}
+
+message Empty {
+}

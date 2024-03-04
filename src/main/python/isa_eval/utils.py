@@ -4,52 +4,6 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 
-def balanced_pairs(
-    string: str, left: str, right: str, ignores: Optional[List[str]] = None
-) -> bool:
-    if ignores is None:
-        ignores = []
-    assert all(
-        not left.startswith(ignore) for ignore in ignores
-    ), "ignored string should not be prefix of left"
-    assert all(
-        not right.startswith(ignore) for ignore in ignores
-    ), "ignored string should not be prefix of right"
-    stack = []
-    remaining = string
-    while len(remaining) > 0:
-        print(remaining, stack)
-        if remaining.startswith(left):
-            stack.append(left)
-            remaining = remaining[len(left) :]
-        elif remaining.startswith(right):
-            if len(stack) == 0:
-                return False
-            stack.pop()
-            remaining = remaining[len(right) :]
-        elif any(remaining.startswith(ignore) for ignore in ignores):
-            longest_ignore = max(
-                (ignore for ignore in ignores if remaining.startswith(ignore)), key=len
-            )
-            print(longest_ignore)
-            remaining = remaining[len(longest_ignore) :]
-        else:
-            remaining = remaining[1:]
-    return len(stack) == 0 or (left == right and len(stack) % 2 == 0)
-
-
-def is_inner_term(string: str) -> bool:
-    return (
-        string.startswith('"')
-        and string.endswith('"')
-        and balanced_pairs(string, '"', '"', ['\\"'])
-    ) or (
-        string.startswith("\\<open>")
-        and string.endswith("\\<close>")
-        and balanced_pairs(string, "\\<open>", "\\<close>")
-    )
-
-
 def chop_by_condition(
     seq: Iterable[Any], condition: Callable[[Any], bool]
 ) -> List[List[Any]]:
@@ -124,7 +78,6 @@ def prepare_logger(name: str, log_file: Optional[Path] = None) -> logging.Logger
 
 
 if __name__ == "__main__":
-    assert balanced_pairs('"p ==> \\"q\\""', '"', '"', ['\\"'])
     print(chop_by_condition([1, 2, 3, 4, 4, 5, 6, 7, 8, 9], lambda x: x % 2222 == 0))
 
     session_files_map = parse_root_file(

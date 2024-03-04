@@ -1,47 +1,20 @@
 package xk.luan.isa_eval
 package manager
+
+import java.nio.file.{Path, Paths}
+
 import de.unruh.isabelle.control.{Isabelle, OperationCollection}
 import de.unruh.isabelle.mlvalue.MLValue.{compileFunction, compileFunction0}
 import de.unruh.isabelle.mlvalue.Version
-import de.unruh.isabelle.pure.{
-  Theory,
-  TheoryHeader,
-  Thm,
-  ToplevelState,
-  Transition
-}
+import de.unruh.isabelle.pure.{Theory, TheoryHeader, ToplevelState, Transition}
 import de.unruh.isabelle.mlvalue.Implicits._
 import de.unruh.isabelle.pure.Implicits._
 
-import java.nio.file.{Path, Paths}
-import scala.math.max
 import TheoryManager.Ops
 
 class TheoryManager(val sessionName: String)(implicit
     isabelle: Isabelle
 ) {
-
-  val sorryTransition: Transition = sorryMaker()
-
-  val oopsTransition: Transition = oopsMaker()
-
-  def localesOpenedForState(toplevelState: ToplevelState): List[String] =
-    Ops.locales_opened_for_state(toplevelState).force.retrieveNow
-
-  def getDependentTheorems(
-      toplevelState: ToplevelState,
-      theoremName: String
-  ): List[(String, Int)] =
-    Ops.get_dependent_thms(toplevelState, theoremName).force.retrieveNow
-
-  def getGlobalFacts(theory: Theory): List[String] =
-    Ops.global_facts_and_defs(theory).force.retrieveNow
-
-  def getCommands(thy: Theory, thyText: String): List[(Int, String)] = {
-    val lineNumAndCmd = Ops.get_commands(thy, thyText).force.retrieveNow
-    lineNumAndCmd.map({ case (lineNum, cmd) => (lineNum.getOrElse(0), cmd) })
-  }
-
   def getThyTransitions(
       thy: Theory,
       thyText: String,
@@ -53,22 +26,6 @@ class TheoryManager(val sessionName: String)(implicit
     })
     else transitions
   }
-
-  def getTheoryImports(thyText: String): List[String] = {
-    val header = TheoryHeader.read(thyText)
-    header.imports.map(_.stripSuffix("\"").stripSuffix("\""))
-  }
-
-  def getTheoryImports(commands: List[String]): List[String] =
-    commands.find(_.startsWith("theory")) match {
-      case Some(header) =>
-        val imports = header.split("imports").last.split("begin").head
-        imports.trim
-          .split("\\s+")
-          .map(_.stripSuffix("\"").stripSuffix("\""))
-          .toList
-      case None => List()
-    }
 
   /** An imported theory may be in one of the following forms:
     *
@@ -182,63 +139,12 @@ class TheoryManager(val sessionName: String)(implicit
     val tactics = result._2._2.map(
       _.stripPrefix("Try this: ").replaceAll(raw" \(\d+ ms\)", "")
     )
-    val parseResults = tactics.map(tactic =>
-      Transition.parseOuterSyntax(theory, tactic)
-    )
+    val parseResults =
+      tactics.map(tactic => Transition.parseOuterSyntax(theory, tactic))
     val transitions = parseResults.map(_.map(_._1))
     val commands = parseResults.map(_.map(_._2).mkString(" "))
     (result._1, transitions, commands)
   }
-
-  def getPreviousTheorems(toplevelState: ToplevelState): List[String] = {
-    val theoremsText = Ops.pretty_theorems(toplevelState).force.retrieveNow
-    theoremsText
-      .stripPrefix("theorems:\n")
-      .split("\n")
-      .filterNot(line =>
-        "[\\w_'\\\\^<>]+:( |$)".r.findFirstMatchIn(line).isEmpty
-      )
-      .map(_.takeWhile(_ != ':').strip)
-      .toList
-  }
-
-  private def sorryMaker(): Transition = {
-    val thy = Theory("Pure")
-    Transition.parseOuterSyntax(thy, "sorry").head._1
-  }
-
-  private def oopsMaker(): Transition = {
-    val thy = Theory("Pure")
-    Transition.parseOuterSyntax(thy, "oops").head._1
-  }
-
-  def getThms(
-      toplevelState: ToplevelState,
-      thmNames: List[(String, Int)]
-  ): List[String] = {
-    // for (name, 0), the index is still 0; for (name, n) where n > 0, the index should be `n-1`
-    val thmsList = thmNames.map(nameIdx =>
-      getThmWithIndex(toplevelState, nameIdx._1, max(0, nameIdx._2 - 1))
-    )
-    val thmsString = Ops.get_thms(toplevelState, thmsList).force.retrieveNow
-    thmsString.split("\n").toList.map(_.strip)
-  }
-
-  private def getThmWithIndex(
-      toplevelState: ToplevelState,
-      name: String,
-      index: Int
-  ): Thm = {
-    Ops.get_thm_with_index(toplevelState, name, index).force.retrieveNow
-  }
-
-  def thmNameString(name: String, index: Int): String =
-    index match {
-      case 0 => name
-      case n => f"$name(${n - 1})"
-    }
-
-
 }
 
 object TheoryManager extends OperationCollection {
@@ -254,54 +160,8 @@ object TheoryManager extends OperationCollection {
     ], Theory](
       "fn (path, header, parents) => Resources.begin_theory path header parents"
     )
-
-    val get_commands =
-      compileFunction[Theory, String, List[(Option[Int], String)]](
-        """fn (thy, text) =>
-        |  map (fn tr => ((Position.line_of o Toplevel.pos_of) tr, Toplevel.name_of tr))
-        |      (Outer_Syntax.parse_text thy (K thy) Position.start text)
-        |  |> filter (fn (_, name) => not (name = "<ignored>"))""".stripMargin
-      )
-
-    val locales_opened_for_state = compileFunction[ToplevelState, List[String]](
-      "fn (tls) => Locale.get_locales (Toplevel.theory_of tls)"
-    )
-
-    val get_dependent_thms =
-      compileFunction[ToplevelState, String, List[(String, Int)]](
-        """fn (tls, name) =>
-        | let val thy = Toplevel.theory_of tls;
-        |     val thm = Global_Theory.get_thms thy name;
-        | in
-        |     map (fn x => (#2 x)) (Thm_Deps.thm_deps thy thm)
-        | end""".stripMargin
-      )
-
-    val global_facts_and_defs = compileFunction[Theory, List[String]](
-      "fn thy => Global_Theory.all_thms_of thy false |> map #1"
-    )
-
-    val pretty_theorems = compileFunction[ToplevelState, String](
-      "fn tls => (YXML.content_of o Pretty.string_of o Pretty.chunks o (Isar_Cmd.pretty_theorems false)) tls"
-    )
-
-    val get_thms = compileFunction[ToplevelState, List[Thm], String](
-      """fn (st, thms) => let
-        |  val ctxt = Toplevel.context_of st
-        |in (YXML.content_of o Pretty.string_of o (Proof_Context.pretty_fact ctxt)) ("", thms) end""".stripMargin
-    )
-
-    val get_thm_with_index = compileFunction[ToplevelState, String, Int, Thm](
-      """fn (tls, name, idx) => List.nth (Proof_Context.get_thms (Toplevel.context_of tls) name, idx)"""
-    )
   }
 
   override protected def newOps(implicit isabelle: Isabelle) =
     new this.Ops
-
-  def filterParsedText(text: List[String]): List[String] = {
-    text.filterNot({ line =>
-      line.isEmpty || (line.startsWith("(*") && line.endsWith("*)"))
-    })
-  }
 }

@@ -5,7 +5,7 @@ import io.grpc.StatusException
 import scalapb.zio_grpc.ServerMain
 import scalapb.zio_grpc.ServiceList
 import zio.ZIO
-import zio.stream.ZStream
+
 import xk.luan.isa_eval.server.{IsabelleOutcome, IsabelleServer}
 
 class IsabelleServerException(status: io.grpc.Status)
@@ -102,48 +102,26 @@ class IsaEvalServer(val debug: Boolean = false) extends ZioIsaEval.IsaEval {
   def executeMany(
       request: zio.stream.Stream[StatusException, ProofCommands]
   ): ZIO[Any, IsabelleServerException, OutcomeStateStream] = {
-    request.runCollect.map(prfCommands => {
-      val outcomes = isaServer.get
-        .executeMultipleCommands(
-          prfCommands.map(_.commands).toList,
-          prfCommands.head.id,
-          prfCommands.head.timeout
-        )
-      val outcomeString = outcomes.map { outcome =>
-        s"<STATE>${outcome.stateId}" +
-          s"<RESULT>${outcome.result}" +
-          s"<MSG>${outcome.getMessage}" +
-          s"<LEVEL>${outcome.proofLevel}" +
-          s"<DESCR>${isaServer.get.stateDescription(outcome.stateId)}"
-      }
-      .mkString("<OUTCOME_SEP>")
-      OutcomeStateStream(outcomeString)
-    }).refineToOrDie[IsabelleServerException]
-
-//
-//    ZStream.fromIterableZIO(
-//      request.runCollect
-//        .map(prfCommands => {
-//          tryWrapper(
-//            isaServer.get
-//              .executeMultipleCommands(
-//                prfCommands.map(_.commands).toList,
-//                prfCommands.head.id,
-//                prfCommands.head.timeout
-//              )
-//              .map { outcome =>
-//                OutcomeState(
-//                  outcome.stateId,
-//                  outcome.result,
-//                  outcome.getMessage,
-//                  outcome.proofLevel,
-//                  isaServer.get.stateDescription(outcome.stateId)
-//                )
-//              }
-//          )
-//        })
-//        .refineToOrDie[IsabelleServerException]
-//    )
+    request.runCollect
+      .map(prfCommands => {
+        val outcomes = isaServer.get
+          .executeMultipleCommands(
+            prfCommands.map(_.commands).toList,
+            prfCommands.head.id,
+            prfCommands.head.timeout
+          )
+        val outcomeString = outcomes
+          .map { outcome =>
+            s"<STATE>${outcome.stateId}" +
+              s"<RESULT>${outcome.result}" +
+              s"<MSG>${outcome.getMessage}" +
+              s"<LEVEL>${outcome.proofLevel}" +
+              s"<DESCR>${isaServer.get.stateDescription(outcome.stateId)}"
+          }
+          .mkString("<OUTCOME_SEP>")
+        OutcomeStateStream(outcomeString)
+      })
+      .refineToOrDie[IsabelleServerException]
   }
 
   def callSledgehammer(
@@ -164,33 +142,17 @@ class IsaEvalServer(val debug: Boolean = false) extends ZioIsaEval.IsaEval {
       request: ParseRequest
   ): ZIO[Any, IsabelleServerException, IsabelleCommandStream] = {
     val commands = isaServer.get
-        .getTheoryCommands(
-          os.Path(request.theory),
-          request.onlyStatements,
-          request.removeIgnored
-        )
-    val commandsString = commands.map { case (cmd, name, line) =>
+      .getTheoryCommands(
+        os.Path(request.theory),
+        request.onlyStatements,
+        request.removeIgnored
+      )
+    val commandsString = commands
+      .map { case (cmd, name, line) =>
         s"<CMD>$cmd<NAME>$name<LINE>$line"
       }
       .mkString("<CMD_SEP>")
     ZIO.succeed(IsabelleCommandStream(commandsString))
-
-//    ZStream.fromIterableZIO(
-//      for {
-//        commands <- zioWrapper {
-//          isaServer.get
-//            .getTheoryCommands(
-//              os.Path(request.theory),
-//              request.onlyStatements,
-//              request.removeIgnored
-//            )
-//            .map { case (cmd, name, line) =>
-//              println("sending", line, cmd.replace('\n', ' '))
-//              IsabelleCommand(cmd, name, line)
-//            }
-//        }
-//      } yield commands
-//    )
   }
 
   def cloneState(

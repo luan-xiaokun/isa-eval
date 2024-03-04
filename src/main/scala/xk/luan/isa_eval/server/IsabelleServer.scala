@@ -1,7 +1,9 @@
 package xk.luan.isa_eval
 package server
 
-import manager.TheoryManager
+import scala.util.{Failure, Success}
+import scala.concurrent.{Await, Future}
+import scala.concurrent.duration.{Duration, SECONDS}
 
 import de.unruh.isabelle.control.{
   Isabelle,
@@ -15,10 +17,8 @@ import de.unruh.isabelle.pure.Implicits._
 import de.unruh.isabelle.mlvalue.MLValue.compileFunction
 import de.unruh.isabelle.control.Isabelle.executionContext
 
-import scala.util.{Failure, Success}
-import scala.concurrent.{Await, Future}
-import scala.concurrent.duration.{Duration, SECONDS}
 import IsabelleServer.Ops
+import manager.TheoryManager
 import util.Utils
 
 object IsabelleCommandCollection {
@@ -147,7 +147,6 @@ class IsabelleServer(
   ): (Theory, ToplevelState, List[(Transition, String)]) = {
     val thyText = os.read(thyPath)
     val thy = theoryManager.beginTheory(thyText, thyPath, sessionFilesMap)
-    println("theory loaded")
     val toplevelState = theoryManager.initToplevel()
     val transitionTextPairs =
       theoryManager.getThyTransitions(thy, thyText, removeComments)
@@ -241,8 +240,6 @@ class IsabelleServer(
       outcomes.foreach(o =>
         if (o.stateId != outcome.stateId) stateMap.remove(o.stateId)
       )
-//      stateMap.update(stateId, stateMap(outcome.stateId))
-//      stateMap.remove(outcome.stateId)
       IsabelleTrialResult(outcome, Some(command))
     }
   }
@@ -289,7 +286,6 @@ class IsabelleServer(
     stateMap("default") = state
     var message: Option[String] = None
     val newState =
-//      try {
       transitions
         .takeWhile { case (tr, _) =>
           tr.position.line.getOrElse(0) + (if (after) 0 else 1) <= lineNum
@@ -297,11 +293,6 @@ class IsabelleServer(
         .foldLeft(state) { case (st, (tr, _)) =>
           tr.execute(st, timeout = Duration(timeout, SECONDS))
         }
-//      } catch {
-//        case e: IsabelleMLException =>
-//          message = Some(e.getMessage)
-//          state
-//      }
     stateMap.update("default", newState)
     IsabelleOutcome(
       "default",
@@ -345,7 +336,6 @@ class IsabelleServer(
       onlyStatements: Boolean = false,
       removeIgnored: Boolean = true
   ): List[(String, String, Int)] = {
-    println(f"Parsing commands in $thyPath")
     val (_, _, transitions) = initialize(thyPath)
     val filteredTransitions = transitions.filter { case (tr, _) =>
       val notIgnored = if (removeIgnored) !tr.isIgnored else true
@@ -355,12 +345,10 @@ class IsabelleServer(
         else true
       notIgnored && retained
     }
-    val results = filteredTransitions
+    filteredTransitions
       .map { case (tr, cmd) =>
         (cmd, tr.name, tr.position.line.getOrElse(0))
       }
-    results.foreach{case (cmd, _, line) => println(line, cmd)}
-    results
   }
 
   private def getResult(

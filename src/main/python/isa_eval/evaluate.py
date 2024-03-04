@@ -1,8 +1,9 @@
 import logging
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 from grpc._channel import _InactiveRpcError as InactiveRpcError
 from grpc._channel import _MultiThreadedRendezvous as MultiThreadedRendezvous
@@ -21,21 +22,21 @@ class EvalRecord:
 
 
 def evaluate_single_theory(
-    thy_path: Path,
+    thy_path: Union[os.PathLike, str],
     agent: EvalAgent,
     client: IsaEvalClient,
     solver: BestFirstSearch,
     logger: Optional[logging.Logger] = None,
 ) -> Dict[str, EvalRecord]:
     if logger is None:
-        logger = prepare_logger(f"Evaluate-{thy_path.stem}")
+        logger = prepare_logger(f"Evaluate-{Path(thy_path).stem}")
     logger.setLevel(logging.DEBUG)
 
     logger.debug(f"Start evaluating theory file {thy_path}, parsing commands")
     # assume that the ITP is already set up
     try:
         commands = client.get_theory_commands(
-            thy_path, only_statements=False, remove_ignored=True
+            Path(thy_path), only_statements=False, remove_ignored=True
         )
     except (InactiveRpcError, MultiThreadedRendezvous) as rpc_error:
         logger.warning(f"Failed to parse theory file {thy_path}: {rpc_error.details()}")
@@ -64,7 +65,9 @@ def evaluate_single_theory(
 
         try:
             if idx == 0:
-                default_state = client.proceed_until(thy_path, group[0].command, 60)
+                default_state = client.proceed_until(
+                    Path(thy_path), group[0].command, 60
+                )
             else:
                 default_state = client.execute("default", group[0].command, 60)
         except (InactiveRpcError, MultiThreadedRendezvous) as rpc_error:
@@ -110,13 +113,12 @@ def evaluate_single_theory(
     logger.info(f"Finishing theory file {thy_path}")
 
     try:
-        print("last command:", commands[-1].command)
         if len(grouped_commands) > 1:
-            print("executing last command end")
             default_state = client.execute("default", commands[-1].command, 60)
         else:
-            print("strange, only one group?")
-            default_state = client.proceed_until(thy_path, commands[-1].command, 60)
+            default_state = client.proceed_until(
+                Path(thy_path), commands[-1].command, 60
+            )
     except (InactiveRpcError, MultiThreadedRendezvous) as rpc_error:
         logger.warning(
             f"Failed when trying to finish theory file {thy_path}: {rpc_error.details()}"
@@ -154,11 +156,11 @@ def prepare_setups(
 
 
 def evaluate_isabelle_agent(
-    isa_path: Path,
-    theories_path: Path,
+    isa_path: Union[os.PathLike, str],
+    theories_path: Union[os.PathLike, str],
     agent: EvalAgent,
     solver: BestFirstSearch,
-    session_roots: Optional[Path] = None,
+    session_roots: Optional[Union[os.PathLike, str]] = None,
     port: int = 8980,
     logger: Optional[logging.Logger] = None,
 ) -> Tuple[Dict[Tuple[str, str, Path], EvalRecord], Dict[Tuple[str, Path], float]]:
@@ -169,8 +171,13 @@ def evaluate_isabelle_agent(
 
     client = IsaEvalClient(port)
     final_eval_records: Dict[Tuple[str, str, Path], EvalRecord] = {}
-    for session, wd, thy_files in prepare_setups(theories_path):
-        setup = IsaSetup(isa_path, session, wd, session_roots)
+    for session, wd, thy_files in prepare_setups(Path(theories_path)):
+        setup = IsaSetup(
+            Path(isa_path),
+            session,
+            wd,
+            Path(session_roots) if session_roots is not None else None,
+        )
         time_before_eval = time.time()
         logger.info(f"Setting up ITP (session {setup.session} with {setup.isa_path})")
 
@@ -247,13 +254,13 @@ if __name__ == "__main__":
             ]
 
     def test():
-        isa_path = Path("~/opt/Isabelle2023").expanduser()
+        isa_path = Path("~/opt/Isabelle2022").expanduser()
         theories_path = Path(
             "/home/xiaokun/projects/isa-eval/dataset/miniF2F/isabelle/test"
         )
         # theories_path = Path("/home1/afp-repo/afp-2023/thys/Completeness")
         # theories_path = Path("/home/xiaokun/projects/isa-eval/src/main/resources")
-        session_roots = Path("/home1/afp-repo/afp-2023/thys")
+        session_roots = Path("/home1/afp-repo/afp-2022/thys")
         # session_roots = None
         agent = SimpleAgent()
         solver = IsaBestFirstSearch(step_timeout=10)

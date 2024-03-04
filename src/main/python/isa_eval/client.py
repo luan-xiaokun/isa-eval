@@ -1,3 +1,4 @@
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,7 +53,9 @@ def make_theory_content(theory: Path, content: str, timeout: int):
 
 
 def make_sledgehammer_request(state_id: str, timeout: int, sledgehammer_timeout: int):
-    return isa_eval_pb2.SledgehammerRequest(id=state_id, timeout=timeout, sledgehammer_timeout=sledgehammer_timeout)
+    return isa_eval_pb2.SledgehammerRequest(
+        id=state_id, timeout=timeout, sledgehammer_timeout=sledgehammer_timeout
+    )
 
 
 def make_proof_commands(state_id: str, commands: str, timeout: int):
@@ -243,7 +246,9 @@ class IsaEvalClient(EvalClient):
         self._check_stub()
         if commands.strip().lower() == "sledgehammer":
             return self.stub.CallSledgehammer(
-                make_sledgehammer_request(state_id, timeout, sledgehammer_timeout=timeout * 3)
+                make_sledgehammer_request(
+                    state_id, timeout, sledgehammer_timeout=timeout * 3
+                )
             )
         return self.stub.Execute(make_proof_commands(state_id, commands, timeout))
 
@@ -259,11 +264,30 @@ class IsaEvalClient(EvalClient):
         if len(normal_proof_commands) == 0:
             outputs = []
         else:
-            outputs = list(make_isa_state_recursive(self.stub.ExecuteMany(iter(normal_proof_commands))))
+            outputs_string = self.stub.ExecuteMany(iter(normal_proof_commands))
+            outputs_string_list = outputs_string.outcomes.split("<OUTCOME_SEP>")
+            outcome_pattern = re.compile(
+                r"<STATE>(.*?)<RESULT>(.*?)<MSG>(.*?)<LEVEL>(\d+)<DESCR>(.*?)", re.S
+            )
+            outputs = []
+            for outcome_string in outputs_string_list:
+                match = outcome_pattern.match(outcome_string)
+                assert match is not None
+                outputs.append(
+                    IsaState(
+                        state_id=match.group(1),
+                        result=match.group(2),
+                        message=match.group(3),
+                        proof_level=int(match.group(4)),
+                        state=match.group(5),
+                    )
+                )
 
         try:
             if (idx := commands_lst.index("sledgehammer")) != -1:
-                sledgehammer_request = make_sledgehammer_request(state_id, timeout, timeout * 3)
+                sledgehammer_request = make_sledgehammer_request(
+                    state_id, timeout, timeout * 3
+                )
                 extra_output = self.stub.CallSledgehammer(sledgehammer_request)
                 outputs.insert(idx, make_isa_state_recursive(extra_output))
         except ValueError as _:
@@ -292,15 +316,30 @@ class IsaEvalClient(EvalClient):
         self, thy_path: Path, only_statements: bool, remove_ignored: bool
     ) -> List[IsaCommand]:
         self._check_stub()
-        isa_cmd_iterator = self.stub.GetTheoryCommands(
+        isa_cmd_string = self.stub.GetTheoryCommands(
             make_parse_request(thy_path, only_statements, remove_ignored)
         )
-        return list(isa_cmd_iterator)
+        isa_cmd_string_list = isa_cmd_string.commands.split("<CMD_SEP>")
+        isa_cmd_list = []
+        isa_cmd_pattern = re.compile(r"<CMD>(.*?)<NAME>(.*?)<LINE>(\d+)", re.S)
+        for isa_cmd_string in isa_cmd_string_list:
+            match = isa_cmd_pattern.match(isa_cmd_string)
+            assert match is not None, f"cannot parse {isa_cmd_string}"
+            isa_cmd = IsaCommand(
+                command=match.group(1), name=match.group(2), line=int(match.group(3))
+            )
+            isa_cmd_list.append(isa_cmd)
+
+        return isa_cmd_list
 
     @return_isa_state
-    def call_sledgehammer(self, state_id: str, timeout: int, sledgehammer_timeout: int) -> IsaState:
+    def call_sledgehammer(
+        self, state_id: str, timeout: int, sledgehammer_timeout: int
+    ) -> IsaState:
         self._check_stub()
-        return self.stub.CallSledgehammer(make_sledgehammer_request(state_id, timeout, sledgehammer_timeout))
+        return self.stub.CallSledgehammer(
+            make_sledgehammer_request(state_id, timeout, sledgehammer_timeout)
+        )
 
 
 def run():

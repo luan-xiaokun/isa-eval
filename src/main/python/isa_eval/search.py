@@ -183,7 +183,9 @@ class BestFirstSearch:
                     if itp_state.proof_is_finished():
                         proved = True
                         final_proof_steps = proof_steps
-                        client.clear_and_rename_state(itp_state.state_id, state.state_id)
+                        client.clear_and_rename_state(
+                            itp_state.state_id, state.state_id
+                        )
                         break
                 else:
                     if itp_state.result == "TIMEOUT":

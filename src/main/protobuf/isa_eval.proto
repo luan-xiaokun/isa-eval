@@ -15,7 +15,7 @@ service IsaEval {
 
   rpc Execute(ProofCommands) returns (OutcomeState) {};
 
-  rpc ExecuteMany(stream ProofCommands) returns (stream OutcomeState) {};
+  rpc ExecuteMany(stream ProofCommands) returns (OutcomeStateStream) {};
 
   rpc CallSledgehammer(SledgehammerRequest) returns (OutcomeState) {};
 
@@ -25,7 +25,7 @@ service IsaEval {
 
   rpc ClearAndRename(ClearAndRenameRequest) returns (OutcomeState) {};
 
-  rpc GetTheoryCommands(ParseRequest) returns (stream IsabelleCommand) {};
+  rpc GetTheoryCommands(ParseRequest) returns (IsabelleCommandStream) {};
 }
 
 message Setup {
@@ -66,6 +66,10 @@ message OutcomeState {
   string state = 5;
 }
 
+message OutcomeStateStream {
+  string outcomes = 1;
+}
+
 message ProofCommands {
   string id = 1;
   string commands = 2;
@@ -81,10 +85,8 @@ message ClearAndRenameRequest {
   string new_id = 2;
 }
 
-message IsabelleCommand {
-  string command = 1;
-  string name = 2;
-  int32 line = 3;
+message IsabelleCommandStream {
+  string commands = 1;
 }
 
 message Empty {

@@ -147,7 +147,9 @@ def prepare_setups(
             for session, thy_files in session_files_map.items()
         ]
     all_files = list(theories_path.glob("**/*.thy"))
-    pieces = [all_files[i: min(i + 50, len(all_files))] for i in range(0, len(all_files), 50)]
+    pieces = [
+        all_files[i : min(i + 50, len(all_files))] for i in range(0, len(all_files), 50)
+    ]
     return [(f"HOL", theories_path, piece) for piece in pieces]
 
 
@@ -246,7 +248,9 @@ if __name__ == "__main__":
 
     def test():
         isa_path = Path("~/opt/Isabelle2023").expanduser()
-        theories_path = Path("/home/xiaokun/projects/isa-eval/dataset/miniF2F/isabelle/valid")
+        theories_path = Path(
+            "/home/xiaokun/projects/isa-eval/dataset/miniF2F/isabelle/test"
+        )
         # theories_path = Path("/home1/afp-repo/afp-2023/thys/Completeness")
         # theories_path = Path("/home/xiaokun/projects/isa-eval/src/main/resources")
         session_roots = Path("/home1/afp-repo/afp-2023/thys")
@@ -260,5 +264,3 @@ if __name__ == "__main__":
         pretty_print_eval_summary(eval_records, times_dict)
 
     test()
-
-

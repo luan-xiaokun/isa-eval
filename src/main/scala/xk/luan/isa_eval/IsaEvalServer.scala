@@ -101,30 +101,49 @@ class IsaEvalServer(val debug: Boolean = false) extends ZioIsaEval.IsaEval {
 
   def executeMany(
       request: zio.stream.Stream[StatusException, ProofCommands]
-  ): ZStream[Any, IsabelleServerException, OutcomeState] = {
-    ZStream.fromIterableZIO(
-      request.runCollect
-        .map(prfCommands => {
-          tryWrapper(
-            isaServer.get
-              .executeMultipleCommands(
-                prfCommands.map(_.commands).toList,
-                prfCommands.head.id,
-                prfCommands.head.timeout
-              )
-              .map { outcome =>
-                OutcomeState(
-                  outcome.stateId,
-                  outcome.result,
-                  outcome.getMessage,
-                  outcome.proofLevel,
-                  isaServer.get.stateDescription(outcome.stateId)
-                )
-              }
-          )
-        })
-        .refineToOrDie[IsabelleServerException]
-    )
+  ): ZIO[Any, IsabelleServerException, OutcomeStateStream] = {
+    request.runCollect.map(prfCommands => {
+      val outcomes = isaServer.get
+        .executeMultipleCommands(
+          prfCommands.map(_.commands).toList,
+          prfCommands.head.id,
+          prfCommands.head.timeout
+        )
+      val outcomeString = outcomes.map { outcome =>
+        s"<STATE>${outcome.stateId}" +
+          s"<RESULT>${outcome.result}" +
+          s"<MSG>${outcome.getMessage}" +
+          s"<LEVEL>${outcome.proofLevel}" +
+          s"<DESCR>${isaServer.get.stateDescription(outcome.stateId)}"
+      }
+      .mkString("<OUTCOME_SEP>")
+      OutcomeStateStream(outcomeString)
+    }).refineToOrDie[IsabelleServerException]
+
+//
+//    ZStream.fromIterableZIO(
+//      request.runCollect
+//        .map(prfCommands => {
+//          tryWrapper(
+//            isaServer.get
+//              .executeMultipleCommands(
+//                prfCommands.map(_.commands).toList,
+//                prfCommands.head.id,
+//                prfCommands.head.timeout
+//              )
+//              .map { outcome =>
+//                OutcomeState(
+//                  outcome.stateId,
+//                  outcome.result,
+//                  outcome.getMessage,
+//                  outcome.proofLevel,
+//                  isaServer.get.stateDescription(outcome.stateId)
+//                )
+//              }
+//          )
+//        })
+//        .refineToOrDie[IsabelleServerException]
+//    )
   }
 
   def callSledgehammer(
@@ -132,30 +151,46 @@ class IsaEvalServer(val debug: Boolean = false) extends ZioIsaEval.IsaEval {
   ): ZIO[Any, IsabelleServerException, OutcomeState] = {
     for {
       outcome <- zioWrapper(
-        isaServer.get.callSledgehammer(request.id, request.timeout, request.sledgehammerTimeout)
+        isaServer.get.callSledgehammer(
+          request.id,
+          request.timeout,
+          request.sledgehammerTimeout
+        )
       )
     } yield makeOutcomeState(outcome)
   }
 
   def getTheoryCommands(
       request: ParseRequest
-  ): ZStream[Any, IsabelleServerException, IsabelleCommand] = {
-    ZStream.fromIterableZIO(
-      for {
-        commands <- zioWrapper {
-          isaServer.get
-            .getTheoryCommands(
-              os.Path(request.theory),
-              request.onlyStatements,
-              request.removeIgnored
-            )
-            .map { case (cmd, name, line) =>
-              println("sending", line, cmd.replace('\n', ' '))
-              IsabelleCommand(cmd, name, line)
-            }
-        }
-      } yield commands
-    )
+  ): ZIO[Any, IsabelleServerException, IsabelleCommandStream] = {
+    val commands = isaServer.get
+        .getTheoryCommands(
+          os.Path(request.theory),
+          request.onlyStatements,
+          request.removeIgnored
+        )
+    val commandsString = commands.map { case (cmd, name, line) =>
+        s"<CMD>$cmd<NAME>$name<LINE>$line"
+      }
+      .mkString("<CMD_SEP>")
+    ZIO.succeed(IsabelleCommandStream(commandsString))
+
+//    ZStream.fromIterableZIO(
+//      for {
+//        commands <- zioWrapper {
+//          isaServer.get
+//            .getTheoryCommands(
+//              os.Path(request.theory),
+//              request.onlyStatements,
+//              request.removeIgnored
+//            )
+//            .map { case (cmd, name, line) =>
+//              println("sending", line, cmd.replace('\n', ' '))
+//              IsabelleCommand(cmd, name, line)
+//            }
+//        }
+//      } yield commands
+//    )
   }
 
   def cloneState(

@@ -86,14 +86,14 @@ def parse_root_file(root_path: Path) -> Dict[str, List[Path]]:
     session_idx_lst.append(len(root_text))
 
     dir_regex = re.compile(r"directories\s*\n([\s\S]*?)theories")
-    for i, (session, main_dir) in enumerate(zip(session_lst, main_dir_lst)):
-        dir2session[main_dir] = session
+    for i, (session, folder) in enumerate(zip(session_lst, main_dir_lst)):
+        dir2session[folder] = session
         dir_match = dir_regex.search(
             root_text, session_idx_lst[i], session_idx_lst[i + 1]
         )
         if dir_match is not None:
             for d in dir_match.group(1).strip().split():
-                dir2session[Path.resolve(main_dir / d.strip())] = session
+                dir2session[Path.resolve(folder / d.strip())] = session
 
     session2files = {s: [] for s in session_lst}
     for thy_path in entry_path.glob("**/*.thy"):
